@@ -58,11 +58,9 @@
 
   <!-- Firebase SDK -->
   <script type="module">
-    // Import SDK
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, set, get, child, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // Konfigurasi dari Firebase Console (punyamu)
     const firebaseConfig = {
       apiKey: "AIzaSyATmw7Oy0dd1ETEbcThKGM1CDznzFX7v_c",
       authDomain: "antriankantorpos.firebaseapp.com",
@@ -74,7 +72,6 @@
       measurementId: "G-0ZLT3CKK6"
     };
 
-    // Init Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
@@ -83,11 +80,21 @@
     const queueList = document.getElementById("queue-list");
 
     // Ambil nomor antrian baru
-    btnAmbil.addEventListener("click", () => {
-      const queueRef = ref(db, "antrian");
-      push(queueRef, {
+    btnAmbil.addEventListener("click", async () => {
+      const dbRef = ref(db);
+      const snapshot = await get(child(dbRef, "lastNumber"));
+      let lastNumber = snapshot.exists() ? snapshot.val() : 0;
+
+      const newNumber = lastNumber + 1;
+
+      // Simpan nomor baru ke daftar antrian
+      set(ref(db, "antrian/" + newNumber), {
+        nomor: newNumber,
         waktu: Date.now()
       });
+
+      // Update lastNumber
+      set(ref(db, "lastNumber"), newNumber);
     });
 
     // Dengarkan update antrian realtime
@@ -100,16 +107,17 @@
         return;
       }
 
-      const keys = Object.keys(data);
-      const sorted = keys.sort((a, b) => data[a].waktu - data[b].waktu);
+      const numbers = Object.values(data).sort((a, b) => a.nomor - b.nomor);
 
-      currentQueueNumber.textContent = "A" + sorted[0].slice(-3); // ambil 3 digit terakhir biar unik
+      // Nomor antrian sekarang
+      currentQueueNumber.textContent = "A" + numbers[0].nomor;
+
+      // Daftar antrian berikutnya
       queueList.innerHTML = "";
-
-      sorted.slice(1, 10).forEach((key, i) => {
+      numbers.slice(1, 10).forEach((item) => {
         const div = document.createElement("div");
         div.className = "queue-item";
-        div.textContent = "A" + key.slice(-3);
+        div.textContent = "A" + item.nomor;
         queueList.appendChild(div);
       });
     });
