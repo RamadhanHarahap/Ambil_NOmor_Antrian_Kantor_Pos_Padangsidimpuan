@@ -1,169 +1,177 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Inisialisasi
+    // Inisialisasi tanggal & waktu
     updateDateTime();
     setInterval(updateDateTime, 1000);
-    loadSettings();
+
+    // Inisialisasi slideshow
     initializeSlideshow();
+
+    // Load data realtime dari Firebase
     loadQueueData();
-    
-    // Atur koneksi WebSocket untuk pembaruan real-time
-    setupWebSocket();
+    loadSettings();
 });
 
-// Perbarui tanggal dan waktu
+// ---------------------
+// TANGGAL & WAKTU
+// ---------------------
 function updateDateTime() {
     const now = new Date();
-    
+
     // Format waktu: HH:MM:SS
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
-    const timeString = `${hours}:${minutes}:${seconds}`;
-    
+    document.getElementById('current-time').textContent = `${hours}:${minutes}:${seconds}`;
+
     // Format tanggal: Hari, DD Bulan YYYY
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
+    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     const day = days[now.getDay()];
     const date = now.getDate();
     const month = months[now.getMonth()];
     const year = now.getFullYear();
-    const dateString = `${day}, ${date} ${month} ${year}`;
-    
-    // Perbarui DOM
-    document.getElementById('current-time').textContent = timeString;
-    document.getElementById('current-date').textContent = dateString;
+    document.getElementById('current-date').textContent = `${day}, ${date} ${month} ${year}`;
 }
 
-// Muat pengaturan dari localStorage
+// ---------------------
+// DATA SETTINGS (INSTANSI & RUNNING TEXT)
+// ---------------------
 function loadSettings() {
-    // Muat nama instansi
-    const instansiNama = localStorage.getItem('instansiNama') || 'Kantor Pos Padangsidimpuan';
-    document.getElementById('instansi-nama').textContent = instansiNama;
-    
-    // Muat teks berjalan
-    const runningText = localStorage.getItem('runningText') || 'Selamat datang di Kantor Pos Padangsidimpuan. Silakan ambil nomor antrian Anda sesuai keperluan Anda.';
-    document.getElementById('running-text').textContent = runningText;
-}
-
-// Inisialisasi slideshow
-function initializeSlideshow() {
-    const slideshowContainer = document.getElementById('slideshow');
-    const dotsContainer = document.getElementById('dots-container');
-    
-    // Ini adalah bagian yang paling penting! Gunakan URL publik, bukan jalur lokal.
-    let slides = JSON.parse(localStorage.getItem("slides")) || [
-    { src: "assets/slide1.jpg" },
-    { src: "assets/slide2.jpg" },
-    { src: "assets/slide3.jpg" }
-];
-    
-    if (slideshowContainer) slideshowContainer.innerHTML = '';
-    if (dotsContainer) dotsContainer.innerHTML = '';
-    
-    slides.forEach((slide, index) => {
-        const slideElement = document.createElement('img');
-        slideElement.src = slide.src;
-        slideElement.className = 'slide';
-        if (index === 0) slideElement.classList.add('active');
-        slideElement.alt = `Slide ${index + 1}`;
-        if (slideshowContainer) slideshowContainer.appendChild(slideElement);
-        
-        const dotElement = document.createElement('div');
-        dotElement.className = 'dot';
-        if (index === 0) dotElement.classList.add('active');
-        dotElement.addEventListener('click', () => goToSlide(index));
-        if (dotsContainer) dotsContainer.appendChild(dotElement);
+    // Nama instansi
+    const instansiRef = firebase.database().ref('settings/instansiNama');
+    instansiRef.on('value', snapshot => {
+        const nama = snapshot.val() || 'Kantor Pos Padangsidimpuan';
+        document.getElementById('instansi-nama').textContent = nama;
     });
-    
-    if (slides.length > 1) {
-        startSlideshow();
-    }
+
+    // Running text
+    const runningTextRef = firebase.database().ref('settings/runningText');
+    runningTextRef.on('value', snapshot => {
+        const text = snapshot.val() || 'Selamat datang di Kantor Pos Padangsidimpuan. Silakan ambil nomor antrian Anda sesuai keperluan Anda.';
+        document.getElementById('running-text').textContent = text;
+    });
+
+    // Slides
+    const slidesRef = firebase.database().ref('slides');
+    slidesRef.on('value', snapshot => {
+        const slides = snapshot.val() || [
+            { src: "assets/slide1.jpg" },
+            { src: "assets/slide2.jpg" },
+            { src: "assets/slide3.jpg" }
+        ];
+        initializeSlideshow(slides);
+    });
 }
 
-// Fungsionalitas slideshow
+// ---------------------
+// SLIDESHOW
+// ---------------------
 let slideshowInterval;
 let currentSlide = 0;
 
-function startSlideshow() {
-    slideshowInterval = setInterval(() => {
-        nextSlide();
-    }, 5000); // Ganti slide setiap 5 detik
+function initializeSlideshow(slides = null) {
+    const slideshowContainer = document.getElementById('slideshow');
+    const dotsContainer = document.getElementById('dots-container');
+
+    if (!slides) {
+        slides = [
+            { src: "assets/slide1.jpg" },
+            { src: "assets/slide2.jpg" },
+            { src: "assets/slide3.jpg" }
+        ];
+    }
+
+    slideshowContainer.innerHTML = '';
+    dotsContainer.innerHTML = '';
+
+    slides.forEach((slide, index) => {
+        const img = document.createElement('img');
+        img.src = slide.src;
+        img.className = 'slide';
+        if (index === 0) img.classList.add('active');
+        img.alt = `Slide ${index+1}`;
+        slideshowContainer.appendChild(img);
+
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        if (index === 0) dot.classList.add('active');
+        dot.addEventListener('click', () => goToSlide(index));
+        dotsContainer.appendChild(dot);
+    });
+
+    if (slideshowInterval) clearInterval(slideshowInterval);
+    if (slides.length > 1) startSlideshow();
 }
 
-function nextSlide() {
+function startSlideshow() {
     const slides = document.querySelectorAll('.slide');
     const dots = document.querySelectorAll('.dot');
-    
-    slides[currentSlide].classList.remove('active');
-    dots[currentSlide].classList.remove('active');
-    
-    currentSlide = (currentSlide + 1) % slides.length;
-    
-    slides[currentSlide].classList.add('active');
-    dots[currentSlide].classList.add('active');
+
+    slideshowInterval = setInterval(() => {
+        slides[currentSlide].classList.remove('active');
+        dots[currentSlide].classList.remove('active');
+
+        currentSlide = (currentSlide + 1) % slides.length;
+
+        slides[currentSlide].classList.add('active');
+        dots[currentSlide].classList.add('active');
+    }, 5000);
 }
 
 function goToSlide(index) {
-    // Hapus interval dan mulai ulang
-    clearInterval(slideshowInterval);
-    
     const slides = document.querySelectorAll('.slide');
     const dots = document.querySelectorAll('.dot');
-    
+
     slides[currentSlide].classList.remove('active');
     dots[currentSlide].classList.remove('active');
-    
+
     currentSlide = index;
-    
+
     slides[currentSlide].classList.add('active');
     dots[currentSlide].classList.add('active');
-    
+
+    clearInterval(slideshowInterval);
     startSlideshow();
 }
 
-// Muat data antrian dari localStorage
+// ---------------------
+// DATA ANTRIAN REALTIME
+// ---------------------
 function loadQueueData() {
-    const currentQueue = localStorage.getItem('currentQueue') || '-';
-    const queueNote = localStorage.getItem('queueNote') || 'Silakan menunggu nomor antrian Anda dipanggil';
-    
-    document.getElementById('current-queue-number').textContent = currentQueue;
-    document.getElementById('queue-note').textContent = queueNote;
-    
-    // Muat item antrian berikutnya
-    const queueList = JSON.parse(localStorage.getItem('queueList')) || [];
-    for (let i = 0; i < 9; i++) { // Ubah loop menjadi 9 untuk menampilkan semua item
-        const queueItem = document.getElementById(`queue-next-${i + 1}`);
-        if (queueItem) {
-            queueItem.textContent = queueList[i] || '-';
-        }
-    }
-}
+    // Nomor antrian sekarang
+    const currentQueueRef = firebase.database().ref('antrian/current');
+    currentQueueRef.on('value', snapshot => {
+        const current = snapshot.val() || '-';
+        document.getElementById('current-queue-number').textContent = current;
+    });
 
-// Atur koneksi WebSocket untuk pembaruan real-time
-function setupWebSocket() {
-    // Menggunakan event local storage untuk demo
-    // Dalam sistem nyata, Anda akan mengimplementasikan WebSocket di sini
-    window.addEventListener('storage', function(e) {
-        if (e.key === 'currentQueue' || e.key === 'queueList' || e.key === 'queueNote') {
-            loadQueueData();
-        } else if (e.key === 'instansiNama' || e.key === 'runningText') {
-            loadSettings();
-        } else if (e.key === 'slides') {
-            clearInterval(slideshowInterval);
-            initializeSlideshow();
+    // Catatan antrian
+    const queueNoteRef = firebase.database().ref('antrian/note');
+    queueNoteRef.on('value', snapshot => {
+        const note = snapshot.val() || 'Silakan menunggu nomor antrian Anda dipanggil';
+        document.getElementById('queue-note').textContent = note;
+    });
+
+    // Daftar antrian berikutnya
+    const nextQueueRef = firebase.database().ref('antrian/next');
+    nextQueueRef.on('value', snapshot => {
+        const list = snapshot.val() || [];
+        for (let i = 0; i < 9; i++) {
+            document.getElementById(`queue-next-${i+1}`).textContent = list[i] || '-';
         }
     });
 }
 
-// Fungsionalitas suara
+// ---------------------
+// NOTIF SUARA
+// ---------------------
 function speakText(text) {
     const speech = new SpeechSynthesisUtterance();
     speech.lang = 'id-ID';
     speech.text = text;
     speech.volume = 1;
-    speech.rate = 1.2; // Sedikit lebih cepat
-    speech.pitch = 1.1; // Sedikit lebih tinggi untuk suara yang lebih jernih
-    
+    speech.rate = 1.2;
+    speech.pitch = 1.1;
+
     window.speechSynthesis.speak(speech);
 }
