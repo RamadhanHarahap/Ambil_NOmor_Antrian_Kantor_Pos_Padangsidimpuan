@@ -1,12 +1,13 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Inisialisasi dan perbarui waktu & tanggal
+    // Inisialisasi
     updateDateTime();
     setInterval(updateDateTime, 1000);
-    // Muat pengaturan dari localStorage
     loadSettings();
+    initializeSlideshow();
+    loadQueueData();
     
-    // Atur event listeners
-    setupEventListeners();
+    // Atur koneksi WebSocket untuk pembaruan real-time
+    setupWebSocket();
 });
 
 // Perbarui tanggal dan waktu
@@ -30,144 +31,132 @@ function updateDateTime() {
     const dateString = `${day}, ${date} ${month} ${year}`;
     
     // Perbarui DOM
-    document.getElementById('pasien-current-time').textContent = timeString;
-    document.getElementById('pasien-current-date').textContent = dateString;
+    document.getElementById('current-time').textContent = timeString;
+    document.getElementById('current-date').textContent = dateString;
 }
 
 // Muat pengaturan dari localStorage
 function loadSettings() {
     // Muat nama instansi
     const instansiNama = localStorage.getItem('instansiNama') || 'Kantor Pos Padangsidimpuan';
-    document.getElementById('pasien-instansi-nama').textContent = instansiNama;
+    document.getElementById('instansi-nama').textContent = instansiNama;
+    
+    // Muat teks berjalan
+    const runningText = localStorage.getItem('runningText') || 'Selamat datang di Kantor Pos Padangsidimpuan. Silakan ambil nomor antrian Anda sesuai keperluan Anda.';
+    document.getElementById('running-text').textContent = runningText;
 }
 
-// Ambil nomor antrian
-function takeQueueNumber() {
-    // Dapatkan daftar antrian saat ini
-    let queueList = JSON.parse(localStorage.getItem('queueList')) || [];
+// Inisialisasi slideshow
+function initializeSlideshow() {
+    const slideshowContainer = document.getElementById('slideshow');
+    const dotsContainer = document.getElementById('dots-container');
     
-    // Tentukan nomor antrian berikutnya
-    let nextQueueNumber;
+    // Ini adalah bagian yang paling penting! Gunakan URL publik, bukan jalur lokal.
+    let slides = JSON.parse(localStorage.getItem("slides")) || [
+    { src: "assets/slide1.jpg" },
+    { src: "assets/slide2.jpg" },
+    { src: "assets/slide3.jpg" }
+];
     
-    if (queueList.length === 0) {
-        // Jika antrian kosong, mulai dari 1 + nomor yang sudah diproses
-        const processedQueue = parseInt(localStorage.getItem('processedQueue') || '0');
-        nextQueueNumber = processedQueue + 1;
-    } else {
-        // Jika ada antrian, ambil nomor terakhir dan tambahkan 1
-        const lastQueueNumber = parseInt(queueList[queueList.length - 1]);
-        nextQueueNumber = lastQueueNumber + 1;
+    if (slideshowContainer) slideshowContainer.innerHTML = '';
+    if (dotsContainer) dotsContainer.innerHTML = '';
+    
+    slides.forEach((slide, index) => {
+        const slideElement = document.createElement('img');
+        slideElement.src = slide.src;
+        slideElement.className = 'slide';
+        if (index === 0) slideElement.classList.add('active');
+        slideElement.alt = `Slide ${index + 1}`;
+        if (slideshowContainer) slideshowContainer.appendChild(slideElement);
+        
+        const dotElement = document.createElement('div');
+        dotElement.className = 'dot';
+        if (index === 0) dotElement.classList.add('active');
+        dotElement.addEventListener('click', () => goToSlide(index));
+        if (dotsContainer) dotsContainer.appendChild(dotElement);
+    });
+    
+    if (slides.length > 1) {
+        startSlideshow();
     }
-    
-    // Format nomor antrian dengan nol di depan
-    const formattedQueueNumber = String(nextQueueNumber).padStart(3, '0');
-    
-    // Tambahkan ke daftar antrian
-    queueList.push(formattedQueueNumber);
-    localStorage.setItem('queueList', JSON.stringify(queueList));
-    
-    // Perbarui statistik
-    const totalQueue = parseInt(localStorage.getItem('totalQueue') || '0') + 1;
-    const remainingQueue = queueList.length;
-    
-    localStorage.setItem('totalQueue', totalQueue.toString());
-    localStorage.setItem('remainingQueue', remainingQueue.toString());
-    
-    // Tampilkan hasil
-    document.getElementById('result-number').textContent = formattedQueueNumber;
-    document.getElementById('queue-result').classList.remove('hidden');
-    
-    // Putar notifikasi suara yang lebih baik
-    speakText(`Anda mendapatkan nomor antrian ${formattedQueueNumber}. Silakan menunggu. Terima kasih.`);
 }
 
-// Tutup pop-up hasil
-function closeResult() {
-    document.getElementById('queue-result').classList.add('hidden');
+// Fungsionalitas slideshow
+let slideshowInterval;
+let currentSlide = 0;
+
+function startSlideshow() {
+    slideshowInterval = setInterval(() => {
+        nextSlide();
+    }, 5000); // Ganti slide setiap 5 detik
 }
 
-// Cetak tiket (disederhanakan untuk demo)
-function printTicket() {
-    const queueNumber = document.getElementById('result-number').textContent;
-    const instansiNama = document.getElementById('pasien-instansi-nama').textContent;
+function nextSlide() {
+    const slides = document.querySelectorAll('.slide');
+    const dots = document.querySelectorAll('.dot');
     
-    // Buat jendela yang bisa dicetak
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <html>
-        <head>
-            <title>Tiket Antrian</title>
-            <style>
-                body {
-                    font-family: 'Poppins', Arial, sans-serif;
-                    text-align: center;
-                    padding: 20px;
-                }
-                .ticket {
-                    border: 1px dashed #000;
-                    padding: 20px;
-                    width: 250px;
-                    margin: 0 auto;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                    border-radius: 8px;
-                }
-                .title {
-                    font-size: 18px;
-                    font-weight: bold;
-                    margin-bottom: 10px;
-                }
-                .number {
-                    font-size: 60px;
-                    font-weight: bold;
-                    margin: 20px 0;
-                    color: #FF6600; /* Warna khas Pos */
-                }
-                .info {
-                    font-size: 14px;
-                    margin-top: 20px;
-                }
-                @media print {
-                    body {
-                        font-size: 10px;
-                    }
-                    .ticket {
-                        border: 1px solid #000;
-                        box-shadow: none;
-                        border-radius: 0;
-                    }
-                    .no-print {
-                        display: none;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="ticket">
-                <div class="title">${instansiNama}</div>
-                <div>NOMOR ANTRIAN</div>
-                <div class="number">${queueNumber}</div>
-                <div class="info">
-                    ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    <br>
-                    ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-                <div class="info" style="font-size:12px; margin-top:10px;">Mohon menunggu hingga dipanggil.</div>
-            </div>
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+    slides[currentSlide].classList.remove('active');
+    dots[currentSlide].classList.remove('active');
+    
+    currentSlide = (currentSlide + 1) % slides.length;
+    
+    slides[currentSlide].classList.add('active');
+    dots[currentSlide].classList.add('active');
 }
 
-// Atur event listeners
-function setupEventListeners() {
-    document.getElementById('take-number-btn').addEventListener('click', takeQueueNumber);
-    document.getElementById('close-result-btn').addEventListener('click', closeResult);
-    document.getElementById('print-ticket-btn').addEventListener('click', printTicket);
+function goToSlide(index) {
+    // Hapus interval dan mulai ulang
+    clearInterval(slideshowInterval);
+    
+    const slides = document.querySelectorAll('.slide');
+    const dots = document.querySelectorAll('.dot');
+    
+    slides[currentSlide].classList.remove('active');
+    dots[currentSlide].classList.remove('active');
+    
+    currentSlide = index;
+    
+    slides[currentSlide].classList.add('active');
+    dots[currentSlide].classList.add('active');
+    
+    startSlideshow();
 }
 
-// Fungsionalitas suara dengan konfigurasi yang ditingkatkan
+// Muat data antrian dari localStorage
+function loadQueueData() {
+    const currentQueue = localStorage.getItem('currentQueue') || '-';
+    const queueNote = localStorage.getItem('queueNote') || 'Silakan menunggu nomor antrian Anda dipanggil';
+    
+    document.getElementById('current-queue-number').textContent = currentQueue;
+    document.getElementById('queue-note').textContent = queueNote;
+    
+    // Muat item antrian berikutnya
+    const queueList = JSON.parse(localStorage.getItem('queueList')) || [];
+    for (let i = 0; i < 9; i++) { // Ubah loop menjadi 9 untuk menampilkan semua item
+        const queueItem = document.getElementById(`queue-next-${i + 1}`);
+        if (queueItem) {
+            queueItem.textContent = queueList[i] || '-';
+        }
+    }
+}
+
+// Atur koneksi WebSocket untuk pembaruan real-time
+function setupWebSocket() {
+    // Menggunakan event local storage untuk demo
+    // Dalam sistem nyata, Anda akan mengimplementasikan WebSocket di sini
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'currentQueue' || e.key === 'queueList' || e.key === 'queueNote') {
+            loadQueueData();
+        } else if (e.key === 'instansiNama' || e.key === 'runningText') {
+            loadSettings();
+        } else if (e.key === 'slides') {
+            clearInterval(slideshowInterval);
+            initializeSlideshow();
+        }
+    });
+}
+
+// Fungsionalitas suara
 function speakText(text) {
     const speech = new SpeechSynthesisUtterance();
     speech.lang = 'id-ID';
