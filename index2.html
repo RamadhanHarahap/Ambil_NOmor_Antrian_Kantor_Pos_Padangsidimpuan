@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Antrian - Kantor Pos Padangsidimpuan</title>
+  <title>Antrian - Kantor Pos Padangsidimpuan (Firebase)</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
   <header>
@@ -28,7 +29,7 @@
         <div class="dots-container" id="dots-container"></div>
       </div>
       <div class="running-text-container">
-        <marquee id="running-text">Selamat datang di Kantor Pos Padangsidimpuan. Silakan ambil nomor antrian Anda.</marquee>
+        <marquee id="running-text">Selamat datang di Kantor Pos Padangsidimpuan. Silakan ambil nomor antrian Anda sesuai keperluan Anda.</marquee>
       </div>
       <div class="action-container">
         <button id="ambil-antrian" class="action-btn">
@@ -58,9 +59,8 @@
   <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, get, child, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, set, get, child, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // Konfigurasi Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyATmw7Oy0dd1ETEbcThKGM1CDznzFX7v_c",
       authDomain: "antriankantorpos.firebaseapp.com",
@@ -72,14 +72,12 @@
       measurementId: "G-0ZLT3CKK6"
     };
 
-    // Inisialisasi Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
     const btnAmbil = document.getElementById("ambil-antrian");
     const currentQueueNumber = document.getElementById("current-queue-number");
     const queueList = document.getElementById("queue-list");
-    const audioNotif = document.getElementById("audio-notif");
 
     // Ambil nomor antrian baru
     btnAmbil.addEventListener("click", async () => {
@@ -90,19 +88,17 @@
       const newNumber = lastNumber + 1;
 
       // Simpan nomor baru ke daftar antrian
-      set(ref(db, "queue/" + newNumber), {
+      set(ref(db, "antrian/" + newNumber), {
         nomor: newNumber,
         waktu: Date.now()
       });
 
       // Update lastNumber
       set(ref(db, "lastNumber"), newNumber);
-
-      alert("Nomor antrian Anda: A" + newNumber);
     });
 
-    // Dengarkan antrian realtime
-    const queueRef = ref(db, "queue");
+    // Dengarkan update antrian realtime
+    const queueRef = ref(db, "antrian");
     onValue(queueRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) {
@@ -113,10 +109,10 @@
 
       const numbers = Object.values(data).sort((a, b) => a.nomor - b.nomor);
 
-      // Nomor antrian sekarang (pertama dalam daftar)
+      // Nomor antrian sekarang
       currentQueueNumber.textContent = "A" + numbers[0].nomor;
 
-      // Daftar berikutnya
+      // Daftar antrian berikutnya
       queueList.innerHTML = "";
       numbers.slice(1, 10).forEach((item) => {
         const div = document.createElement("div");
@@ -124,19 +120,7 @@
         div.textContent = "A" + item.nomor;
         queueList.appendChild(div);
       });
-
-      // Mainkan suara notifikasi setiap kali ada update antrian
-      audioNotif.play();
     });
-
-    // Tampilkan jam & tanggal realtime
-    setInterval(() => {
-      const now = new Date();
-      document.getElementById("current-time").textContent =
-        now.toLocaleTimeString("id-ID");
-      document.getElementById("current-date").textContent =
-        now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    }, 1000);
   </script>
 </body>
 </html>
