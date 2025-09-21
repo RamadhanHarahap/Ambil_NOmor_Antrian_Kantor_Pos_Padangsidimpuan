@@ -1,10 +1,10 @@
 // ======================
-// script.js - Terhubung Firebase Realtime Database
+// script.js - Realtime Firebase
 // ======================
 
-// Import Firebase (pastikan script type="module" di index.html)
+// Import Firebase (pastikan <script type="module"> di index.html)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import { getDatabase, ref, set, push, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics.js";
 
 // ======================
@@ -26,14 +26,14 @@ const analytics = getAnalytics(app);
 const database = getDatabase(app);
 
 // ======================
-// Event DOM Loaded
+// DOM Loaded
 // ======================
 document.addEventListener('DOMContentLoaded', function() {
     updateDateTime();
     setInterval(updateDateTime, 1000);
     loadSettings();
     initializeSlideshow();
-    loadQueueData();
+    setupRealtimeQueue();
 });
 
 // ======================
@@ -44,7 +44,7 @@ function updateDateTime() {
     const hours = String(now.getHours()).padStart(2,'0');
     const minutes = String(now.getMinutes()).padStart(2,'0');
     const seconds = String(now.getSeconds()).padStart(2,'0');
-    const timeString = `${hours}:${minutes}:${seconds}`;
+    document.getElementById('current-time').textContent = `${hours}:${minutes}:${seconds}`;
 
     const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
     const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -52,14 +52,11 @@ function updateDateTime() {
     const date = now.getDate();
     const month = months[now.getMonth()];
     const year = now.getFullYear();
-    const dateString = `${day}, ${date} ${month} ${year}`;
-
-    document.getElementById('current-time').textContent = timeString;
-    document.getElementById('current-date').textContent = dateString;
+    document.getElementById('current-date').textContent = `${day}, ${date} ${month} ${year}`;
 }
 
 // ======================
-// Load Settings (nama instansi & running text)
+// Load Settings
 // ======================
 function loadSettings() {
     const instansiNama = localStorage.getItem('instansiNama') || 'Kantor Pos Padangsidimpuan';
@@ -72,119 +69,96 @@ function loadSettings() {
 // ======================
 // Slideshow
 // ======================
-let slideshowInterval;
-let currentSlide = 0;
-
 function initializeSlideshow() {
     const slideshowContainer = document.getElementById('slideshow');
     const dotsContainer = document.getElementById('dots-container');
+    
     let slides = JSON.parse(localStorage.getItem("slides")) || [
         { src: "assets/slide1.jpg" },
         { src: "assets/slide2.jpg" },
         { src: "assets/slide3.jpg" }
     ];
 
-    if (slideshowContainer) slideshowContainer.innerHTML = '';
-    if (dotsContainer) dotsContainer.innerHTML = '';
+    slideshowContainer.innerHTML = '';
+    dotsContainer.innerHTML = '';
 
-    slides.forEach((slide, index) => {
-        const slideElement = document.createElement('img');
-        slideElement.src = slide.src;
-        slideElement.className = 'slide';
-        if (index === 0) slideElement.classList.add('active');
-        slideElement.alt = `Slide ${index + 1}`;
-        slideshowContainer.appendChild(slideElement);
+    slides.forEach((slide,index) => {
+        const img = document.createElement('img');
+        img.src = slide.src;
+        img.className = 'slide';
+        if(index===0) img.classList.add('active');
+        slideshowContainer.appendChild(img);
 
-        const dotElement = document.createElement('div');
-        dotElement.className = 'dot';
-        if (index === 0) dotElement.classList.add('active');
-        dotElement.addEventListener('click', () => goToSlide(index));
-        dotsContainer.appendChild(dotElement);
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        if(index===0) dot.classList.add('active');
+        dot.addEventListener('click', ()=>goToSlide(index));
+        dotsContainer.appendChild(dot);
     });
 
-    if (slides.length > 1) startSlideshow();
+    if(slides.length>1) startSlideshow();
 }
 
+let slideshowInterval;
+let currentSlide = 0;
+
 function startSlideshow() {
-    slideshowInterval = setInterval(() => nextSlide(), 5000);
+    slideshowInterval = setInterval(nextSlide,5000);
 }
 
 function nextSlide() {
     const slides = document.querySelectorAll('.slide');
     const dots = document.querySelectorAll('.dot');
-
     slides[currentSlide].classList.remove('active');
     dots[currentSlide].classList.remove('active');
-
-    currentSlide = (currentSlide + 1) % slides.length;
-
+    currentSlide = (currentSlide+1)%slides.length;
     slides[currentSlide].classList.add('active');
     dots[currentSlide].classList.add('active');
 }
 
-function goToSlide(index) {
+function goToSlide(index){
     clearInterval(slideshowInterval);
     const slides = document.querySelectorAll('.slide');
     const dots = document.querySelectorAll('.dot');
-
     slides[currentSlide].classList.remove('active');
     dots[currentSlide].classList.remove('active');
-
     currentSlide = index;
-
     slides[currentSlide].classList.add('active');
     dots[currentSlide].classList.add('active');
-
     startSlideshow();
 }
 
 // ======================
-// Firebase Queue Data
+// Realtime Queue
 // ======================
-function loadQueueData() {
+function setupRealtimeQueue() {
     const antrianRef = ref(database, 'antrian');
-    onValue(antrianRef, (snapshot) => {
+
+    onValue(antrianRef, snapshot => {
         const data = snapshot.val();
-        let nomorTerakhir = 0;
-        let queueList = [];
+        if(!data) return;
 
-        if (data) {
-            const semuaData = Object.values(data);
-            semuaData.sort((a,b) => a.waktu - b.waktu);
-            queueList = semuaData.map(item => item.nomorAntrian);
-            nomorTerakhir = queueList[queueList.length-1] || 0;
-        }
+        const semuaAntrian = Object.values(data).sort((a,b)=>a.waktu - b.waktu);
+        const currentQueue = semuaAntrian[0]?.nomorAntrian || '-';
+        document.getElementById('current-queue-number').textContent = String(currentQueue).padStart(3,'0');
 
-        document.getElementById('current-queue-number').textContent = nomorTerakhir;
-        document.getElementById('queue-note').textContent = 'Silakan menuju loket yang tersedia.';
+        const queueNote = 'Silakan menuju loket yang tersedia.';
+        document.getElementById('queue-note').textContent = queueNote;
 
-        for (let i=0; i<9; i++) {
+        for(let i=0;i<9;i++){
             const queueItem = document.getElementById(`queue-next-${i+1}`);
-            if(queueItem) queueItem.textContent = queueList[i+1] || '-';
+            queueItem.textContent = semuaAntrian[i+1]? String(semuaAntrian[i+1].nomorAntrian).padStart(3,'0') : '-';
         }
-    });
-}
 
-// ======================
-// Tambah Nomor Antrian
-// ======================
-export function tambahNomorAntrian(nomor) {
-    const antrianRef = ref(database, 'antrian');
-    const newAntrianRef = push(antrianRef);
-    set(newAntrianRef, {
-        nomorAntrian: nomor,
-        waktu: Date.now()
-    }).then(() => {
-        console.log("Nomor antrian berhasil ditambahkan:", nomor);
-    }).catch((err) => {
-        console.error("Gagal menambahkan nomor antrian:", err);
+        // Suara jika ada nomor baru dipanggil (opsional)
+        if(currentQueue !== '-') speakText(`Nomor antrian ${String(currentQueue).padStart(3,'0')} silakan menuju loket.`);
     });
 }
 
 // ======================
 // Text-to-Speech
 // ======================
-export function speakText(text) {
+function speakText(text) {
     const speech = new SpeechSynthesisUtterance();
     speech.lang = 'id-ID';
     speech.text = text;
